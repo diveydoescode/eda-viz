@@ -3,7 +3,7 @@
 > **Interactive web-based simulator for VLSI Partitioning and Placement algorithms**
 > Built for Assignment 1 & 2 — Physical Design of VLSI Circuits
 
-**Live Demo →** _[add your deployed URL here]_
+**Live Demo →** https://diveydoescode.github.io/eda-viz/
 
 ---
 
