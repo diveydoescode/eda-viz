@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EDA Algorithm Visualizer — KL · FM · Cluster Growth</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@700;800&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:      #0b0f1a;
+  --bg2:     #0f1623;
+  --bg3:     #141c2e;
+  --surface: #192033;
+  --border:  #1d2b42;
+  --border2: #25364f;
+  --text:    #dde6f5;
+  --text2:   #7b90b2;
+  --text3:   #3a4f6a;
+  --green:   #10b981;
+  --blue:    #3b82f6;
+  --amber:   #f59e0b;
+  --red:     #ef4444;
+  --purple:  #8b5cf6;
+  --font:    'JetBrains Mono', 'Courier New', monospace;
+  --rad:     8px; --radsm: 4px;
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; overflow: hidden; }
+
+/* ── Layout ── */
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+.header {
+  background: var(--bg2); border-bottom: 1px solid var(--border);
+  padding: 10px 20px; display: flex; align-items: center; gap: 16px; flex-shrink: 0;
+}
+.logo { font-family: 'Syne', monospace; font-size: 18px; font-weight: 800; color: var(--green); letter-spacing: 2px; }
+.logo em { color: var(--blue); font-style: normal; }
+.subtitle { font-size: 10px; color: var(--text3); letter-spacing: 1px; }
+
+.tabs { display: flex; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.tab {
+  padding: 10px 18px; font-family: var(--font); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.5px; color: var(--text3); background: none; border: none;
+  border-bottom: 2px solid transparent; cursor: pointer; transition: color .15s, border-color .15s;
+}
+.tab:hover { color: var(--text2); }
+.tab.active { color: var(--green); border-bottom-color: var(--green); }
+
+.workspace { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Sidebar ── */
+.sidebar {
+  width: 210px; flex-shrink: 0; background: var(--bg2); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow-y: auto; padding: 14px; gap: 10px;
+}
+.sec-lbl { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: var(--text3); margin-bottom: 4px; }
+
+.preset-btn {
+  display: block; width: 100%; text-align: left; padding: 8px 10px;
+  background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radsm);
+  color: var(--text2); font-family: var(--font); font-size: 11px; cursor: pointer;
+  margin-bottom: 5px; transition: all .12s;
+}
+.preset-btn:hover { border-color: var(--border2); color: var(--text); }
+.preset-btn.active { background: rgba(16,185,129,.08); border-color: rgba(16,185,129,.4); color: var(--green); }
+
+.info-card {
+  background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radsm);
+  padding: 9px 10px; font-size: 10px; line-height: 1.9; color: var(--text2);
+}
+.info-card .k { color: var(--text3); } .info-card .v0 { color: var(--green); }
+.info-card .v1 { color: var(--blue); } .info-card .vn { color: var(--text); }
+
+.run-btn {
+  width: 100%; padding: 11px; background: var(--green); color: #000;
+  border: none; border-radius: var(--rad); font-family: var(--font);
+  font-size: 12px; font-weight: 700; letter-spacing: 1px; cursor: pointer;
+  transition: opacity .15s, transform .1s; box-shadow: 0 0 18px rgba(16,185,129,.18);
+  margin-top: 4px;
+}
+.run-btn:hover { opacity: .88; } .run-btn:active { transform: scale(.97); }
+
+/* ── Main ── */
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+.canvas {
+  flex: 1; position: relative; background: var(--bg);
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.empty-msg { text-align: center; color: var(--text3); font-size: 11px; line-height: 2.8; user-select: none; }
+.empty-icon { font-size: 40px; display: block; opacity: .2; margin-bottom: 8px; }
+
+#viz-svg { display: block; }
+
+.step-badge {
+  position: absolute; top: 10px; right: 10px; padding: 3px 9px;
+  border-radius: var(--radsm); font-size: 9px; font-weight: 700; letter-spacing: 1.5px;
+  border: 1px solid; background: var(--bg2);
+}
+.msg-bar {
+  position: absolute; bottom: 10px; left: 10px; right: 10px;
+  background: rgba(15,22,35,.94); border: 1px solid var(--border2);
+  border-radius: var(--rad); padding: 7px 12px; font-size: 11px;
+  color: var(--text); backdrop-filter: blur(6px); line-height: 1.5;
+}
+
+/* ── Controls ── */
+.controls {
+  border-top: 1px solid var(--border); background: var(--bg2);
+  padding: 9px 14px; display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+}
+.cbtn {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radsm);
+  color: var(--text2); padding: 5px 11px; font-family: var(--font); font-size: 12px;
+  cursor: pointer; transition: all .12s; line-height: 1;
+}
+.cbtn:hover { border-color: var(--border2); color: var(--text); background: var(--bg3); }
+.cbtn:active { transform: scale(.95); }
+.play-btn { background: var(--green); border-color: transparent; color: #000; min-width: 80px; font-weight: 700; }
+.play-btn:hover { opacity: .88; background: var(--green); }
+.play-btn.paused { background: var(--amber); }
+
+.prog-wrap { flex: 1; }
+.prog-bg { height: 4px; background: var(--surface); border-radius: 2px; overflow: hidden; cursor: pointer; }
+.prog-fill { height: 100%; background: var(--green); border-radius: 2px; transition: width .22s ease; }
+
+.spd-grp { display: flex; align-items: center; gap: 5px; }
+.spd-grp label { font-size: 9px; color: var(--text3); letter-spacing: 1px; white-space: nowrap; }
+.spd-grp input[type=range] { width: 72px; accent-color: var(--green); }
+
+.step-ctr { font-size: 10px; color: var(--text3); min-width: 55px; text-align: right; white-space: nowrap; }
+
+/* ── Log ── */
+.log-panel {
+  width: 220px; flex-shrink: 0; background: var(--bg2);
+  border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden;
+}
+.log-hdr {
+  padding: 10px 12px 7px; font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+  color: var(--text3); border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.log-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+.log-item {
+  padding: 5px 10px 5px 12px; font-size: 10px; line-height: 1.5; color: var(--text3);
+  cursor: pointer; border-left: 2px solid transparent; transition: all .1s;
+}
+.log-item:hover { background: var(--surface); color: var(--text2); }
+.log-item.active { background: rgba(16,185,129,.06); border-left-color: var(--green); color: var(--text); }
+.log-num { color: var(--text3); margin-right: 5px; font-size: 9px; }
+
+/* ── Graph node: no CSS transform transition (use SVG attr + rAF instead) ── */
+
+/* ── Floorplan block entrance ── */
+@keyframes blockIn {
+  0%   { opacity: 0; transform: scale(.05); }
+  65%  { transform: scale(1.07); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.block-enter {
+  transform-box: fill-box;
+  transform-origin: center center;
+  animation: blockIn .6s cubic-bezier(.34,1.56,.64,1) both;
+}
+
+/* ── Node pulse ── */
+@keyframes ringPulse { 0%,100% { opacity:.35; r:22; } 50% { opacity:.6; r:30; } }
+.node-hi-ring { animation: ringPulse .9s ease-in-out infinite; }
+
+::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="header">
+    <div class="logo">EDA<em>·</em>VIZ</div>
+    <div class="subtitle">VLSI PARTITIONING &amp; PLACEMENT SIMULATOR</div>
+  </header>
+
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-algo="kl">Kernighan–Lin (KL)</button>
+    <button class="tab" data-algo="fm">Fiduccia–Mattheyses (FM)</button>
+    <button class="tab" data-algo="cluster">Cluster Growth</button>
+  </div>
+
+  <div class="workspace">
+    <aside class="sidebar" id="sidebar"></aside>
+
+    <div class="main">
+      <div class="canvas" id="canvas">
+        <div class="empty-msg" id="empty-msg">
+          <span class="empty-icon">⬡</span>
+          Select a preset and click <strong>RUN</strong><br>
+          to start the simulation
+        </div>
+        <svg id="viz-svg" style="display:none"></svg>
+        <div class="step-badge" id="step-badge" style="display:none"></div>
+        <div class="msg-bar" id="msg-bar" style="display:none"></div>
+      </div>
+      <div class="controls">
+        <button class="cbtn" id="btn-first">⏮</button>
+        <button class="cbtn" id="btn-prev">◀</button>
+        <button class="cbtn play-btn" id="btn-play">▶ PLAY</button>
+        <button class="cbtn" id="btn-next">▶</button>
+        <button class="cbtn" id="btn-last">⏭</button>
+        <div class="prog-wrap">
+          <div class="prog-bg" id="prog-bg">
+            <div class="prog-fill" id="prog-fill" style="width:0%"></div>
+          </div>
+        </div>
+        <div class="spd-grp">
+          <label>SPD</label>
+          <input type="range" id="spd-slider" min="200" max="2400" step="100" value="1000">
+        </div>
+        <div class="step-ctr" id="step-ctr">— / —</div>
+      </div>
+    </div>
+
+    <div class="log-panel">
+      <div class="log-hdr">STEP LOG</div>
+      <div class="log-list" id="log-list"></div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div style="background:var(--bg2);border-top:1px solid var(--border);padding:5px 20px;
+              display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+    <span style="font-size:9px;color:var(--text3);letter-spacing:.5px">
+      EDA-VIZ &middot; VLSI Partitioning &amp; Placement Simulator
+    </span>
+    <span style="font-size:10px;color:var(--text2);letter-spacing:.5px">
+      Submitted by&nbsp;
+      <strong style="color:var(--green);font-weight:700">Divey Pradhan</strong>
+      &nbsp;&middot;&nbsp;
+      <span style="color:var(--blue)">23FE10EVL00003</span>
+    </span>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ═══════════════════════════════════════════════════════
+   ALGORITHMS
+   ═══════════════════════════════════════════════════════ */
+
+function runKL(nodes, edges, initPart) {
+  const S = [];
+  let part = {...initPart};
+
+  const ew  = (u,v) => { const e=edges.find(e=>(e.u===u&&e.v===v)||(e.u===v&&e.v===u)); return e?e.w:0; };
+  const cut = p => edges.filter(e=>p[e.u]!==p[e.v]).reduce((s,e)=>s+e.w,0);
+  const dvals = p => {
+    const D={};
+    for(const n of nodes){
+      let ex=0,in_=0;
+      for(const e of edges){
+        if(e.u===n||e.v===n){const nb=e.u===n?e.v:e.u; p[nb]!==p[n]?ex+=e.w:in_+=e.w;}
+      }
+      D[n]=ex-in_;
+    }
+    return D;
+  };
+
+  S.push({type:'init',part:{...part},cut:cut(part),hi:[],
+    msg:`Initial partition — Cut size: ${cut(part)}`});
+
+  for(let pass=0;pass<4;pass++){
+    const locked=new Set(), tmp={...part}, swaps=[], gains=[];
+    for(let k=0;k<Math.floor(nodes.length/2);k++){
+      const D=dvals(tmp);
+      const A=nodes.filter(n=>tmp[n]===0&&!locked.has(n));
+      const B=nodes.filter(n=>tmp[n]===1&&!locked.has(n));
+      if(!A.length||!B.length) break;
+      let bg=-Infinity,ba=null,bb=null;
+      for(const a of A) for(const b of B){const g=D[a]+D[b]-2*ew(a,b); if(g>bg){bg=g;ba=a;bb=b;}}
+      S.push({type:'cand',part:{...tmp},cut:cut(tmp),hi:[ba,bb],
+        msg:`Pass ${pass+1}.${k+1}: Best pair ${ba}↔${bb} | D[${ba}]=${D[ba]}, D[${bb}]=${D[bb]}, c(a,b)=${ew(ba,bb)} → gain=${bg>=0?'+':''}${bg}`});
+      swaps.push([ba,bb]); gains.push(bg);
+      locked.add(ba); locked.add(bb); tmp[ba]=1; tmp[bb]=0;
+      S.push({type:'swap',part:{...tmp},cut:cut(tmp),hi:[ba,bb],
+        msg:`Swapped ${ba}↔${bb} — New cut: ${cut(tmp)}`});
+    }
+    let cum=0,maxG=0,maxK=-1;
+    for(let i=0;i<gains.length;i++){cum+=gains[i]; if(cum>maxG){maxG=cum;maxK=i;}}
+    if(maxG<=0){
+      S.push({type:'done',part:{...part},cut:cut(part),hi:[],
+        msg:`✓ Converged — No improvement. Final cut: ${cut(part)}`});
+      break;
+    }
+    for(let i=0;i<=maxK;i++){part[swaps[i][0]]=1;part[swaps[i][1]]=0;}
+    S.push({type:'pass',part:{...part},cut:cut(part),hi:[],
+      msg:`Pass ${pass+1} done — Applied ${maxK+1} swap(s), Δgain=${maxG}, cut=${cut(part)}`});
+  }
+  return S;
+}
+
+function runFM(nodes, nets, initPart) {
+  const S=[];
+  let part={...initPart};
+  const cut=p=>nets.filter(n=>new Set(n.map(x=>p[x])).size>1).length;
+
+  S.push({type:'init',part:{...part},cut:cut(part),hi:[],
+    msg:`Initial partition — Cut nets: ${cut(part)}`});
+
+  for(let pass=0;pass<5;pass++){
+    const tmp={...part},gains=[],moves=[],locked=new Set();
+    for(let i=0;i<nodes.length;i++){
+      let bg=-Infinity,bn=null;
+      for(const n of nodes){
+        if(locked.has(n)) continue;
+        const old=cut(tmp); tmp[n]=1-tmp[n]; const g=old-cut(tmp); tmp[n]=1-tmp[n];
+        if(g>bg){bg=g;bn=n;}
+      }
+      if(!bn) break;
+      tmp[bn]=1-tmp[bn]; locked.add(bn); gains.push(bg); moves.push(bn);
+      S.push({type:'move',part:{...tmp},cut:cut(tmp),hi:[bn],
+        msg:`Move ${bn} → P${tmp[bn]} (gain=${bg>=0?'+':''}${bg}) | Cut: ${cut(tmp)}`});
+    }
+    let cum=0,maxG=0,maxK=-1;
+    for(let i=0;i<gains.length;i++){cum+=gains[i]; if(cum>maxG){maxG=cum;maxK=i;}}
+    if(maxG<=0){
+      S.push({type:'done',part:{...part},cut:cut(part),hi:[],
+        msg:`✓ FM converged — Final cut: ${cut(part)}`});
+      break;
+    }
+    for(let i=0;i<=maxK;i++) part[moves[i]]=1-part[moves[i]];
+    S.push({type:'pass',part:{...part},cut:cut(part),hi:[],
+      msg:`Pass ${pass+1} — Kept ${maxK+1} move(s), cut=${cut(part)}`});
+  }
+  return S;
+}
+
+function runCluster(modules) {
+  const S=[];
+  const mods=modules.map(m=>({...m,x:0,y:0}));
+  mods.sort((a,b)=>b.w*b.h-a.w*a.h);
+  S.push({type:'init',placed:[],cur:null,
+    msg:`Linear ordering by area: ${mods.map(m=>m.name).join(' → ')}`});
+
+  const placed=[];
+  const ov=(a,b)=>!(a.x+a.w<=b.x||b.x+b.w<=a.x||a.y+a.h<=b.y||b.y+b.h<=a.y);
+
+  for(const m of mods){
+    if(!placed.length){
+      placed.push({...m,x:0,y:0});
+      S.push({type:'place',placed:placed.map(p=>({...p})),cur:m.name,
+        msg:`Place ${m.name} (${m.w}×${m.h}, area=${m.w*m.h}) at origin (0, 0)`});
+      continue;
+    }
+    const xs=[...new Set([0,...placed.map(p=>p.x+p.w),...placed.map(p=>p.x)])];
+    const ys=[...new Set([0,...placed.map(p=>p.y+p.h),...placed.map(p=>p.y)])];
+    let best=null,bA=Infinity,bS=Infinity;
+    for(const cx of xs) for(const cy of ys){
+      if(cx<0||cy<0) continue;
+      const c={...m,x:cx,y:cy};
+      if(placed.some(p=>ov(c,p))) continue;
+      const mX=Math.max(...placed.map(p=>p.x+p.w),cx+m.w);
+      const mY=Math.max(...placed.map(p=>p.y+p.h),cy+m.h);
+      const a=mX*mY,s=Math.abs(mX-mY);
+      if(a<bA||(a===bA&&s<bS)){bA=a;bS=s;best=[cx,cy];}
+    }
+    if(!best) best=[0,0];
+    placed.push({...m,x:best[0],y:best[1]});
+    const mX=Math.max(...placed.map(p=>p.x+p.w));
+    const mY=Math.max(...placed.map(p=>p.y+p.h));
+    S.push({type:'place',placed:placed.map(p=>({...p})),cur:m.name,
+      msg:`Place ${m.name} (${m.w}×${m.h}) at (${best[0]}, ${best[1]}) — BB: ${mX}×${mY} = ${mX*mY} u²`});
+  }
+  return S;
+}
+
+/* ═══════════════════════════════════════════════════════
+   PRESETS
+   ═══════════════════════════════════════════════════════ */
+
+const PRESETS = {
+  kl:[
+    {name:'4-node ring',
+     nodes:['A','B','C','D'],
+     edges:[{u:'A',v:'B',w:1},{u:'B',v:'C',w:1},{u:'C',v:'D',w:1},{u:'D',v:'A',w:1}],
+     partition:{A:0,B:0,C:1,D:1}},
+    {name:'6-node weighted',
+     nodes:['1','2','3','4','5','6'],
+     edges:[{u:'1',v:'2',w:3},{u:'1',v:'4',w:1},{u:'2',v:'3',w:2},{u:'2',v:'4',w:2},{u:'3',v:'6',w:2},{u:'4',v:'5',w:1},{u:'5',v:'6',w:3}],
+     partition:{'1':0,'2':0,'3':0,'4':1,'5':1,'6':1}}
+  ],
+  fm:[
+    {name:'4-cell hypergraph',
+     nodes:['M1','M2','M3','M4'],
+     nets:[['M1','M2'],['M2','M3'],['M3','M4'],['M4','M1']],
+     partition:{M1:0,M2:0,M3:1,M4:1}},
+    {name:'6-cell example',
+     nodes:['a','b','c','d','e','f'],
+     nets:[['a','b','c'],['b','d'],['c','d','e'],['e','f'],['a','f']],
+     partition:{a:0,b:0,c:0,d:1,e:1,f:1}}
+  ],
+  cluster:[
+    {name:'6 modules (assignment example)',
+     modules:[{name:'M1',w:4,h:3},{name:'M2',w:2,h:5},{name:'M3',w:3,h:3},{name:'M4',w:2,h:2},{name:'M5',w:4,h:2},{name:'M6',w:1,h:4}]},
+    {name:'4 modules',
+     modules:[{name:'A',w:3,h:3},{name:'B',w:2,h:4},{name:'C',w:4,h:2},{name:'D',w:1,h:3}]}
+  ]
+};
+
+/* ═══════════════════════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════════════════════ */
+
+const S = {
+  algo:'kl', presetIdx:0, steps:[], idx:0,
+  playing:false, speed:1000, timer:null,
+  prevPlacedLen:0
+};
+
+/* Pastel block colours matching matplotlib Pastel1 */
+const BCOL  = ['#ffb3ba','#bae1ff','#baffc9','#ffd9ba','#e8baff','#ffffba','#c9f0ff','#ffd6f0'];
+const BSTROKE=['#c07880','#6ea0c4','#6eb879','#c0986a','#8a70c4','#a0a048','#68a0c4','#c068a0'];
+
+function typeCol(t){return{init:'#7b90b2',cand:'#f59e0b',swap:'#10b981',move:'#10b981',place:'#3b82f6',pass:'#8b5cf6',done:'#10b981'}[t]||'#7b90b2';}
+
+/* ═══════════════════════════════════════════════════════
+   SVG HELPERS
+   ═══════════════════════════════════════════════════════ */
+
+const NS='http://www.w3.org/2000/svg';
+function el(tag,attrs={},text=''){
+  const e=document.createElementNS(NS,tag);
+  for(const[k,v]of Object.entries(attrs)) e.setAttribute(k,v);
+  if(text) e.textContent=text;
+  return e;
+}
+
+/* ═══════════════════════════════════════════════════════
+   FLOORPLAN RENDERER  (rebuilds SVG each step)
+   ═══════════════════════════════════════════════════════ */
+
+function renderFloorplan(step){
+  const svg=document.getElementById('viz-svg');
+  svg.innerHTML='';
+  const placed=step.placed||[];
+
+  const VW=560,VH=340;
+  svg.setAttribute('viewBox',`0 0 ${VW} ${VH}`);
+  svg.setAttribute('width',VW); svg.setAttribute('height',VH);
+
+  if(!placed.length){
+    svg.appendChild(el('text',{x:VW/2,y:VH/2,'text-anchor':'middle',fill:'#3a4f6a','font-size':12,'font-family':'monospace'},
+      'No modules placed yet — click RUN and step forward'));
+    return;
+  }
+
+  const maxX=Math.max(...placed.map(p=>p.x+p.w));
+  const maxY=Math.max(...placed.map(p=>p.y+p.h));
+  /* Leave room: left 40px (y-axis labels), right 20px, top 30px (title), bottom 30px (x-axis) */
+  const ML=44,MR=20,MT=30,MB=30;
+  const aW=VW-ML-MR, aH=VH-MT-MB;
+  const scale=Math.min(aW/maxX, aH/maxY);
+  /* Centre the plot in the available area */
+  const offX=ML+(aW-maxX*scale)/2;
+  const offY=MT+(aH-maxY*scale)/2;
+
+  /* Title */
+  const titleTxt=`Cluster Growth Floorplan — BB: ${maxX} × ${maxY}  (Area: ${maxX*maxY} u²)`;
+  svg.appendChild(el('text',{x:VW/2,y:16,'text-anchor':'middle',fill:'#dde6f5','font-size':11,'font-family':'monospace','font-weight':'bold'},titleTxt));
+
+  /* Axis labels */
+  for(let i=0;i<=maxX;i++){
+    const xp=offX+i*scale;
+    svg.appendChild(el('line',{x1:xp,y1:offY,x2:xp,y2:offY+maxY*scale,stroke:'#1d2b42','stroke-width':.6}));
+    svg.appendChild(el('text',{x:xp,y:offY+maxY*scale+14,'text-anchor':'middle',fill:'#3a4f6a','font-size':9,'font-family':'monospace'},String(i)));
+  }
+  for(let i=0;i<=maxY;i++){
+    const yp=offY+(maxY-i)*scale;
+    svg.appendChild(el('line',{x1:offX,y1:yp,x2:offX+maxX*scale,y2:yp,stroke:'#1d2b42','stroke-width':.6}));
+    svg.appendChild(el('text',{x:offX-6,y:yp,'text-anchor':'end','dominant-baseline':'central',fill:'#3a4f6a','font-size':9,'font-family':'monospace'},String(i)));
+  }
+
+  /* Axis titles */
+  svg.appendChild(el('text',{x:offX+maxX*scale/2,y:VH-6,'text-anchor':'middle',fill:'#5a7090','font-size':10,'font-family':'monospace'},'Width'));
+  const hLabel=el('text',{x:10,y:offY+maxY*scale/2,'text-anchor':'middle',fill:'#5a7090','font-size':10,'font-family':'monospace',transform:`rotate(-90,10,${offY+maxY*scale/2})`},'Height');
+  svg.appendChild(hLabel);
+
+  /* Bounding box */
+  svg.appendChild(el('rect',{x:offX,y:offY,width:maxX*scale,height:maxY*scale,rx:1,fill:'none',stroke:'#ef4444','stroke-width':1.8,'stroke-dasharray':'7,4',opacity:.75}));
+
+  /* Blocks */
+  const isNewStep=(placed.length>S.prevPlacedLen);
+  placed.forEach((m,i)=>{
+    const bx=offX+m.x*scale, by=offY+(maxY-m.y-m.h)*scale;
+    const bw=m.w*scale, bh=m.h*scale;
+    const col=BCOL[i%BCOL.length];
+    const sc=BSTROKE[i%BSTROKE.length];
+    const isCur=(step.cur===m.name);
+
+    const g=document.createElementNS(NS,'g');
+    /* Animate only the block that was just placed */
+    if(isCur&&isNewStep){
+      g.setAttribute('style',`transform-origin:${bx+bw/2}px ${by+bh/2}px`);
+      g.classList.add('block-enter');
+    }
+
+    const rect=el('rect',{x:bx,y:by,width:bw,height:bh,rx:2,fill:col,stroke:isCur?'#ffffff':sc,'stroke-width':isCur?2.2:1.4,opacity:isCur?1:.85});
+    g.appendChild(rect);
+
+    /* Glow outline for current block */
+    if(isCur){
+      const glow=el('rect',{x:bx-3,y:by-3,width:bw+6,height:bh+6,rx:4,fill:'none',stroke:col,'stroke-width':2.5,opacity:.5});
+      const aGlow=el('animate',{attributeName:'opacity',values:'.5;.1;.5',dur:'1s',repeatCount:'indefinite'});
+      glow.appendChild(aGlow);
+      svg.appendChild(glow); /* append to svg so it renders behind g's animation */
+    }
+
+    /* Text labels */
+    const fsBig=Math.min(bw,bh)*.22, fsSub=Math.min(bw,bh)*.16;
+    if(fsBig>7){
+      g.appendChild(el('text',{x:bx+bw/2,y:by+bh/2-(fsBig*.55),'text-anchor':'middle','dominant-baseline':'central',fill:'#111','font-size':Math.min(fsBig,16),'font-family':'JetBrains Mono,monospace','font-weight':'bold'},m.name));
+      if(fsSub>6) g.appendChild(el('text',{x:bx+bw/2,y:by+bh/2+(fsBig*.65),'text-anchor':'middle','dominant-baseline':'central',fill:'#222','font-size':Math.min(fsSub,13),'font-family':'JetBrains Mono,monospace',opacity:.75},`(${m.w}×${m.h})`));
+    }
+
+    svg.appendChild(g);
+  });
+
+  S.prevPlacedLen=placed.length;
+}
+
+/* ═══════════════════════════════════════════════════════
+   GRAPH RENDERER  (persistent SVG elements, CSS transitions)
+   ═══════════════════════════════════════════════════════ */
+
+const G = { nodes:[], edges:[], nets:[], algo:'', nodeEls:{}, edgeEls:[], init:false };
+
+function initGraphSVG(nodes, edges, nets, algo){
+  const svg=document.getElementById('viz-svg');
+  svg.innerHTML=''; svg.setAttribute('viewBox','0 0 560 340');
+  svg.setAttribute('width',560); svg.setAttribute('height',340);
+
+  G.nodes=[...nodes]; G.edges=edges||[]; G.nets=nets||[]; G.algo=algo;
+  G.nodeEls={}; G.edgeEls=[]; G.init=true;
+
+  /* Partition backgrounds */
+  svg.appendChild(el('rect',{x:0,y:0,width:270,height:340,rx:8,fill:'#10b981',opacity:.04}));
+  svg.appendChild(el('rect',{x:290,y:0,width:270,height:340,rx:8,fill:'#3b82f6',opacity:.04}));
+  svg.appendChild(el('line',{x1:280,y1:24,x2:280,y2:320,stroke:'#1d2b42','stroke-dasharray':'5,4','stroke-width':1}));
+  svg.appendChild(el('text',{x:140,y:20,'text-anchor':'middle',fill:'#10b981','font-size':10,'font-family':'monospace','font-weight':'bold',opacity:.65},'PARTITION  0'));
+  svg.appendChild(el('text',{x:420,y:20,'text-anchor':'middle',fill:'#3b82f6','font-size':10,'font-family':'monospace','font-weight':'bold',opacity:.65},'PARTITION  1'));
+
+  /* Edge layer */
+  const eLayer=el('g'); eLayer.id='elayer'; svg.appendChild(eLayer);
+
+  if(algo==='kl'){
+    for(const e of edges){
+      const line=el('line',{stroke:'#ef4444','stroke-width':1.5,opacity:.6});
+      const wlbl=el('text',{'text-anchor':'middle',fill:'#3a4f6a','font-size':9,'font-family':'monospace'},'');
+      eLayer.appendChild(line); eLayer.appendChild(wlbl);
+      G.edgeEls.push({line,wlbl,u:e.u,v:e.v,w:e.w});
+    }
+  } else {
+    for(let i=0;i<nets.length;i++){
+      const lines=[];
+      for(let j=0;j<nets[i].length;j++){
+        const l=el('line',{stroke:'#ef4444','stroke-width':1.2,opacity:.5});
+        eLayer.appendChild(l); lines.push(l);
+      }
+      G.edgeEls.push({lines,net:nets[i]});
+    }
+  }
+
+  /* Node layer */
+  const nLayer=el('g'); nLayer.id='nlayer'; svg.appendChild(nLayer);
+
+  for(const n of nodes){
+    const g=document.createElementNS(NS,'g');
+    g.classList.add('gnode');
+    /* pulse ring */
+    const ring=el('circle',{r:23,fill:'#10b981',opacity:0});
+    const ra=el('animate',{attributeName:'r',values:'19;29;19',dur:'.9s',repeatCount:'indefinite'});
+    const oa=el('animate',{attributeName:'opacity',values:'0;0;0',dur:'.9s',repeatCount:'indefinite'});
+    ring.appendChild(ra); ring.appendChild(oa);
+    const circ=el('circle',{r:19,fill:'#141c2e',stroke:'#10b981','stroke-width':1.5});
+    const lbl=el('text',{'text-anchor':'middle','dominant-baseline':'central',fill:'#dde6f5','font-size':12,'font-family':'monospace','font-weight':'bold'},n);
+    g.appendChild(ring); g.appendChild(circ); g.appendChild(lbl);
+    nLayer.appendChild(g);
+    G.nodeEls[n]={g,ring,oa,circ,lbl,pos:{x:0,y:0}};
+  }
+
+  /* Cut counter label */
+  svg.appendChild(el('text',{id:'cut-lbl',x:280,y:334,'text-anchor':'middle',fill:'#7b90b2','font-size':10,'font-family':'monospace'},''));
+}
+
+function nodePos(n, part){
+  const p=part[n];
+  const same=G.nodes.filter(x=>part[x]===p);
+  const idx=same.indexOf(n);
+  const PAD=44, H=340;
+  const totalH=H-2*PAD;
+  const y=same.length<2 ? H/2 : PAD+idx*totalH/(same.length-1);
+  const x=p===0 ? 80 : 480;
+  return{x,y};
+}
+
+/* rAF-based SVG transform animation — keeps coords in SVG user-unit space,
+   so edge x1/y1 attributes and node transforms always match regardless of scaling */
+function animSVGNode(g, x0, y0, x1, y1, dur){
+  const start=performance.now();
+  function tick(now){
+    const t=Math.min((now-start)/dur,1);
+    const e=1-Math.pow(1-t,3); /* cubic ease-out */
+    g.setAttribute('transform',`translate(${x0+(x1-x0)*e},${y0+(y1-y0)*e})`);
+    if(t<1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+let prevPart={};
+function updateGraphSVG(step, firstRender){
+  const {part,hi=[]} = step;
+
+  for(const n of G.nodes){
+    const {g,ring,oa,circ,lbl}=G.nodeEls[n];
+    const {x,y}=nodePos(n,part);
+    const cur=G.nodeEls[n].pos;
+    /* Use SVG transform attribute — same coordinate space as x1/y1/x2/y2 on edges */
+    if(firstRender || (Math.abs(cur.x-x)<0.5 && Math.abs(cur.y-y)<0.5)){
+      g.setAttribute('transform',`translate(${x},${y})`);
+    } else {
+      animSVGNode(g, cur.x, cur.y, x, y, 420);
+    }
+    G.nodeEls[n].pos={x,y};
+    const col=part[n]===0?'#10b981':'#3b82f6';
+    circ.setAttribute('stroke',col); ring.setAttribute('fill',col);
+    if(hi.includes(n)){
+      circ.setAttribute('fill',col); lbl.setAttribute('fill','#000');
+      oa.setAttribute('values','.3;.55;.3');
+    } else {
+      circ.setAttribute('fill','#141c2e'); lbl.setAttribute('fill','#dde6f5');
+      oa.setAttribute('values','0;0;0');
+    }
+  }
+
+  /* Update edges */
+  if(G.algo==='kl'){
+    for(const ee of G.edgeEls){
+      const pu=nodePos(ee.u,part), pv=nodePos(ee.v,part);
+      const cut=part[ee.u]!==part[ee.v];
+      ee.line.setAttribute('x1',pu.x); ee.line.setAttribute('y1',pu.y);
+      ee.line.setAttribute('x2',pv.x); ee.line.setAttribute('y2',pv.y);
+      ee.line.setAttribute('stroke',cut?'#ef4444':'#253650');
+      ee.line.setAttribute('stroke-width',cut?2:1);
+      ee.line.setAttribute('opacity',cut?.8:.35);
+      ee.wlbl.setAttribute('x',(pu.x+pv.x)/2);
+      ee.wlbl.setAttribute('y',(pu.y+pv.y)/2-7);
+      ee.wlbl.textContent=ee.w>1?String(ee.w):'';
+    }
+  } else {
+    for(const ee of G.edgeEls){
+      const poss=ee.net.map(n=>nodePos(n,part));
+      const cx=poss.reduce((s,p)=>s+p.x,0)/poss.length;
+      const cy=poss.reduce((s,p)=>s+p.y,0)/poss.length;
+      const cut=new Set(ee.net.map(n=>part[n])).size>1;
+      poss.forEach((p,j)=>{
+        ee.lines[j].setAttribute('x1',cx); ee.lines[j].setAttribute('y1',cy);
+        ee.lines[j].setAttribute('x2',p.x); ee.lines[j].setAttribute('y2',p.y);
+        ee.lines[j].setAttribute('stroke',cut?'#ef4444':'#253650');
+        ee.lines[j].setAttribute('stroke-width',cut?2:1);
+        ee.lines[j].setAttribute('opacity',cut?.72:.28);
+      });
+    }
+  }
+
+  /* Cut counter */
+  const cutLbl=document.getElementById('cut-lbl');
+  if(cutLbl){
+    let cv=G.algo==='kl'
+      ? G.edges.filter(e=>part[e.u]!==part[e.v]).reduce((s,e)=>s+e.w,0)
+      : G.nets.filter(n=>new Set(n.map(x=>part[x])).size>1).length;
+    cutLbl.textContent=`Cut: ${cv}`;
+  }
+  prevPart={...part};
+}
+
+/* ═══════════════════════════════════════════════════════
+   UI
+   ═══════════════════════════════════════════════════════ */
+
+function renderSidebar(){
+  const p=PRESETS[S.algo][S.presetIdx];
+  let html=`<div class="sec-lbl">PRESETS</div>`;
+  PRESETS[S.algo].forEach((pr,i)=>{
+    html+=`<button class="preset-btn${i===S.presetIdx?' active':''}" onclick="selectPreset(${i})">${pr.name}</button>`;
+  });
+  html+=`<div class="sec-lbl" style="margin-top:10px">PROBLEM DATA</div><div class="info-card">`;
+  if(S.algo==='kl'){
+    html+=`<div><span class="k">nodes: </span><span class="v0">${p.nodes.join(', ')}</span></div>`;
+    html+=`<div><span class="k">edges: </span><span class="vn">${p.edges.length}</span></div>`;
+    html+=`<div><span class="k">P0: </span><span class="v0">${p.nodes.filter(n=>p.partition[n]===0).join(', ')}</span></div>`;
+    html+=`<div><span class="k">P1: </span><span class="v1">${p.nodes.filter(n=>p.partition[n]===1).join(', ')}</span></div>`;
+  } else if(S.algo==='fm'){
+    html+=`<div><span class="k">cells: </span><span class="v0">${p.nodes.join(', ')}</span></div>`;
+    html+=`<div><span class="k">nets: </span><span class="vn">${p.nets.length}</span></div>`;
+    p.nets.forEach((n,i)=>{ html+=`<div><span class="k">N${i+1}: </span><span class="vn">${n.join('—')}</span></div>`; });
+  } else {
+    html+=`<div><span class="k">modules: </span><span class="vn">${p.modules.length}</span></div>`;
+    p.modules.forEach(m=>{ html+=`<div><span class="k">${m.name}: </span><span class="vn">${m.w}×${m.h}=${m.w*m.h} u²</span></div>`; });
+  }
+  html+=`</div><button class="run-btn" onclick="runAlgo()">▶  RUN ALGORITHM</button>`;
+  document.getElementById('sidebar').innerHTML=html;
+}
+
+function renderViz(firstRender=false){
+  const step=S.steps[S.idx];
+  const svg=document.getElementById('viz-svg');
+  const empty=document.getElementById('empty-msg');
+  const badge=document.getElementById('step-badge');
+  const msgBar=document.getElementById('msg-bar');
+
+  if(!S.steps.length){
+    svg.style.display='none'; empty.style.display='';
+    badge.style.display='none'; msgBar.style.display='none'; return;
+  }
+  svg.style.display='block'; empty.style.display='none';
+
+  if(S.algo==='cluster') renderFloorplan(step);
+  else updateGraphSVG(step, firstRender);
+
+  const tc=typeCol(step.type);
+  badge.style.display=''; badge.textContent=(step.type||'').toUpperCase();
+  badge.style.color=tc; badge.style.borderColor=tc;
+  msgBar.style.display=''; msgBar.textContent=step.msg||'';
+}
+
+function renderLog(){
+  const list=document.getElementById('log-list');
+  list.innerHTML=S.steps.map((s,i)=>
+    `<div class="log-item${i===S.idx?' active':''}" onclick="jumpTo(${i})">
+       <span class="log-num">${String(i+1).padStart(2,'0')}</span>${s.msg||''}
+     </div>`).join('');
+  const a=list.querySelector('.active');
+  if(a) a.scrollIntoView({block:'nearest'});
+}
+
+function renderCtrl(){
+  const pct=S.steps.length?(S.idx+1)/S.steps.length*100:0;
+  document.getElementById('prog-fill').style.width=pct+'%';
+  document.getElementById('step-ctr').textContent=S.steps.length?`${S.idx+1} / ${S.steps.length}`:'— / —';
+  const pb=document.getElementById('btn-play');
+  pb.textContent=S.playing?'⏸ PAUSE':'▶ PLAY';
+  pb.className='cbtn play-btn'+(S.playing?' paused':'');
+}
+
+function render(firstRender=false){
+  renderSidebar(); renderViz(firstRender); renderLog(); renderCtrl();
+}
+
+/* ═══════════════════════════════════════════════════════
+   ACTIONS
+   ═══════════════════════════════════════════════════════ */
+
+function selectPreset(i){ stopPlay(); S.presetIdx=i; S.steps=[]; S.idx=0; S.prevPlacedLen=0; render(); }
+
+function setAlgo(a){
+  stopPlay(); S.algo=a; S.presetIdx=0; S.steps=[]; S.idx=0; S.prevPlacedLen=0;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.algo===a));
+  render();
+}
+
+function runAlgo(){
+  stopPlay();
+  const p=PRESETS[S.algo][S.presetIdx];
+  let steps=[];
+  if(S.algo==='kl') steps=runKL(p.nodes,p.edges,p.partition);
+  else if(S.algo==='fm') steps=runFM(p.nodes,p.nets,p.partition);
+  else steps=runCluster(p.modules);
+  S.steps=steps; S.idx=0; S.prevPlacedLen=0;
+  if(S.algo!=='cluster') initGraphSVG(p.nodes,p.edges||null,p.nets||null,S.algo);
+  render(true);
+}
+
+function jumpTo(i){
+  stopPlay();
+  if(S.algo==='cluster'&&i>0){
+    S.prevPlacedLen=(S.steps[i-1].placed||[]).length;
+  } else if(S.algo==='cluster'){
+    S.prevPlacedLen=0;
+  }
+  S.idx=i; renderViz(); renderLog(); renderCtrl();
+}
+
+function stepFwd(){
+  if(S.idx>=S.steps.length-1) return;
+  if(S.algo==='cluster') S.prevPlacedLen=(S.steps[S.idx].placed||[]).length;
+  S.idx++; renderViz(); renderLog(); renderCtrl();
+}
+
+function stepBck(){
+  if(S.idx<=0) return;
+  S.idx--;
+  if(S.algo==='cluster') S.prevPlacedLen=Math.max(0,(S.steps[S.idx].placed||[]).length-1);
+  renderViz(); renderLog(); renderCtrl();
+}
+
+function togglePlay(){
+  if(!S.steps.length) return;
+  S.playing=!S.playing;
+  S.playing ? startPlay() : stopPlay();
+  renderCtrl();
+}
+
+function startPlay(){
+  S.timer=setInterval(()=>{
+    if(S.idx>=S.steps.length-1){ S.playing=false; clearInterval(S.timer); renderCtrl(); return; }
+    stepFwd();
+  }, S.speed);
+}
+
+function stopPlay(){ S.playing=false; clearInterval(S.timer); S.timer=null; }
+
+/* ═══════════════════════════════════════════════════════
+   EVENT WIRING
+   ═══════════════════════════════════════════════════════ */
+
+document.getElementById('btn-first').onclick=()=>{stopPlay();S.idx=0;S.prevPlacedLen=0;renderViz();renderLog();renderCtrl();};
+document.getElementById('btn-prev').onclick=()=>{stopPlay();stepBck();};
+document.getElementById('btn-play').onclick=togglePlay;
+document.getElementById('btn-next').onclick=()=>{stopPlay();stepFwd();};
+document.getElementById('btn-last').onclick=()=>{stopPlay();S.idx=S.steps.length-1;if(S.algo==='cluster')S.prevPlacedLen=(S.steps[S.idx-1]?.placed||[]).length;renderViz();renderLog();renderCtrl();};
+
+document.getElementById('spd-slider').oninput=function(){
+  S.speed=+this.value;
+  if(S.playing){stopPlay();S.playing=true;startPlay();renderCtrl();}
+};
+
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>setAlgo(t.dataset.algo));
+
+document.getElementById('prog-bg').onclick=function(e){
+  if(!S.steps.length) return;
+  const r=this.getBoundingClientRect();
+  jumpTo(Math.round((e.clientX-r.left)/r.width*(S.steps.length-1)));
+};
+
+/* ── Init ── */
+render();
+</script>
+</body>
+</html>
