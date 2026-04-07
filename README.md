@@ -129,5 +129,5 @@ Deployed on GitHub Pages. To run locally, just open `index.html` in any browser.
 | **Roll No.** | 23FE10EVL00003 |
 | **Program** | B.Tech Electronics Engineering (VLSI Design & Technology) |
 | **University** | Manipal University Jaipur |
-| **Subject** | Physical Design of VLSI Circuits |
+| **Subject** | VLSI Physical Design |
 | **Assignments** | 1 (KL, FM Partitioning) and 2 (Cluster Growth Floorplan) |
